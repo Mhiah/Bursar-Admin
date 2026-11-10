@@ -59,7 +59,7 @@ const EXPLORER = "https://explorer.arc.io";
 // keccak256("VaultCreated(address,address,address)")
 const VAULT_CREATED = "0x897c133dfbfe1f6239e98b4ffd7e4f6c86a62350a131a7a37790419f58af02f9";
 const CHUNK = 10000;
-const AT_ONCE = 6;
+const AT_ONCE = 2;
 const KEY = "bursar-admin-" + FACTORY;
 const DAY = 86400000;
 
@@ -73,12 +73,19 @@ let password = store.get("bursar-admin-pw") || "";
 let state = (() => { try { return JSON.parse(store.get(KEY)) || { scanned: null, vaults: [] }; } catch { return { scanned: null, vaults: [] }; } })();
 
 class WrongPassword extends Error {}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Arc's public server limits how fast it can be asked: when it says slow down, wait and try again.
 async function rpc(method, params) {
-  const r = await fetch("/api/rpc", { method: "POST", headers: { "content-type": "application/json", "x-admin-password": password }, body: JSON.stringify({ method, params }) });
-  if (r.status === 401) throw new WrongPassword();
-  const out = await r.json();
-  if (out.error) throw new Error(typeof out.error === "string" ? out.error : out.error.message);
-  return out.result;
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetch("/api/rpc", { method: "POST", headers: { "content-type": "application/json", "x-admin-password": password }, body: JSON.stringify({ method, params }) });
+    if (r.status === 401) throw new WrongPassword();
+    const out = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    const msg = out.error ? (typeof out.error === "string" ? out.error : out.error.message) : null;
+    if (!msg) return out.result;
+    const limited = r.status === 429 || /rate|limit|too many/i.test(msg);
+    if (!limited || attempt >= 8) throw new Error(msg);
+    await wait(Math.min(30000, 1000 * 2 ** attempt));
+  }
 }
 const hex = (n) => "0x" + n.toString(16);
 const blockTime = async (n) => Number((await rpc("eth_getBlockByNumber", [hex(n), false])).timestamp) * 1000;
@@ -134,7 +141,10 @@ async function scan() {
       password = "";
       store.del("bursar-admin-pw");
       showLogin("Wrong password.");
-    } else note(`Couldn't read Arc: ${e.message}. Refresh to try again.`, true);
+    } else {
+      note(`Couldn't read Arc: ${e.message}. It will try again in a minute, carrying on from where it stopped.`, true);
+      setTimeout(scan, 60000);
+    }
   } finally {
     busy = false;
   }
