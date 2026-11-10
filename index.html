@@ -177,7 +177,7 @@ function render() {
   $("rows").innerHTML = vaults.length
     ? vaults.map((v) => `<tr><td>${fmt(v.time, { day: "numeric", month: "short", year: "numeric" })}</td><td>${link(v.owner)}</td><td>${link(v.vault)}</td></tr>`).join("")
     : `<tr><td colspan="3">No vaults found yet.</td></tr>`;
-  $("foot").innerHTML = `Factory ${link(FACTORY)} · read up to block ${state.scanned ?? "…"}${state.checkedAt ? ` · checked ${new Date(state.checkedAt).toLocaleString("en-GB")}` : ""} · updates every 5 minutes`;
+  $("foot").innerHTML = `Factory ${link(FACTORY)} · read up to block ${state.scanned ?? "…"} · updates every 6 hours`;
 }
 
 function showLogin(msg) {
@@ -195,7 +195,7 @@ $("login").addEventListener("submit", (e) => {
 });
 
 if (password) { render(); scan(); } else showLogin();
-setInterval(() => password && scan(), 5 * 60000);
+setInterval(() => password && scan(), 6 * 3600000);
 </script>
 </body>
 </html>
