@@ -160,8 +160,9 @@ function render() {
   const vaults = [...state.vaults].sort((a, b) => b.time - a.time);
   const now = Date.now();
   const tiles = [
+    // Bursar allows one business per wallet, so each different owner is one business.
+    ["Businesses", new Set(vaults.map((v) => v.owner)).size],
     ["Vaults made", vaults.length],
-    ["Different owners", new Set(vaults.map((v) => v.owner)).size],
     ["Made this week", vaults.filter((v) => v.time >= monday(now)).length],
     ["Last 30 days", vaults.filter((v) => v.time >= now - 30 * DAY).length],
   ];
