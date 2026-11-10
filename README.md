@@ -3,26 +3,17 @@
 A small private website that counts every vault made on Bursar.
 
 It reads the `VaultCreated` events of the Bursar vault factory on Arc mainnet
-(`0x1d872C07C1935fe5E3a28a9df0690C2caf7B5709`) and shows vaults made, different owners,
-vaults made this week and in the last 30 days, a weekly chart and every vault with explorer links.
-It checks Arc again every 5 minutes. No dependencies: Node 20 or newer only.
+(`0x1d872C07C1935fe5E3a28a9df0690C2caf7B5709`, live since 14 Oct 2026) and shows vaults made,
+different owners, vaults made this week and in the last 30 days, a weekly chart and every vault
+with explorer links. It checks Arc again every 5 minutes while open.
 
-## Run
+- `index.html`: the page. It reads Arc in the browser and remembers what it found, so after the first visit it only reads new blocks.
+- `api/rpc.js`: a Vercel function that passes read-only Arc calls to Arc, only with the right password.
 
-```
-STATS_PASSWORD=choose-one node server.mjs
-```
+## Put it on Vercel
 
-Open http://localhost:8080 and enter the password (any user name).
+1. Add New → Project → import this repo. No build settings needed.
+2. In Settings → Environment Variables add `ADMIN_PASSWORD` (any password you choose), then redeploy.
+3. Open the site and enter the password.
 
-## Settings
-
-| Variable | Default |
-| --- | --- |
-| `STATS_PASSWORD` | required |
-| `ARC_RPC_URL` | `https://rpc.mainnet.arc.io` |
-| `FACTORY_ADDRESS` | the mainnet BursarFactory above |
-| `FACTORY_START_BLOCK` | found by itself |
-| `EXPLORER_URL` | `https://explorer.arc.io` |
-| `STATS_DATA_DIR` | `./data` |
-| `PORT` | `8080` |
+Optional: `ARC_RPC_URL` (default `https://rpc.mainnet.arc.io`).
