@@ -1,5 +1,5 @@
 // Bursar Admin: a small private website that counts the vaults made from the Bursar vault factory on Arc.
-// No dependencies. Run: node server.mjs   (Railway: root directory /stats, start command `node server.mjs`)
+// No dependencies. Run: node server.mjs   (Railway: deploy this repo; it starts with `npm start`)
 //
 // Settings (environment variables):
 //   STATS_PASSWORD       required: the password for the page (the user name can be anything)
@@ -124,7 +124,7 @@ function page() {
       : "";
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Bursar stats</title>
+<title>Bursar Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
 :root{--blue:#0066FF;--navy:#0A1128;--soft:#EAF6FF;--line:#D9E4F0;--bad:#C62828}
@@ -144,7 +144,7 @@ td{padding:10px;border-bottom:1px solid var(--line);white-space:nowrap}a{color:v
 .foot{font-size:12px}
 @media(max-width:640px){.tiles{grid-template-columns:repeat(2,1fr)}h1{font-size:32px}.bar span.d{writing-mode:vertical-rl;transform:rotate(180deg)}}
 </style></head><body><main>
-<h1>Bursar stats</h1>
+<h1>Bursar Admin</h1>
 <p class="sub">Everyone using Bursar, counted by the vaults made from the vault factory on Arc.</p>
 ${note}
 <div class="tiles">${tiles.map(([l, n]) => `<div class="card"><p class="label">${l}</p><p class="num">${n}</p></div>`).join("")}</div>
@@ -176,7 +176,7 @@ function allowed(req) {
 createServer((req, res) => {
   if (req.url === "/health") return res.end("ok");
   if (!allowed(req)) {
-    res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Bursar stats"', "content-type": "text/plain" });
+    res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Bursar Admin"', "content-type": "text/plain" });
     return res.end("Password needed.");
   }
   if (req.url === "/vaults.json") {
@@ -185,4 +185,4 @@ createServer((req, res) => {
   }
   res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" });
   res.end(page());
-}).listen(PORT, () => console.log(`Bursar stats on port ${PORT}`));
+}).listen(PORT, () => console.log(`Bursar Admin on port ${PORT}`));
