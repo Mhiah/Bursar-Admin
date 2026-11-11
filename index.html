@@ -158,6 +158,8 @@ async function scan() {
     const latest = Number(await rpc("eth_blockNumber", []));
     let from = state.scanned == null ? await firstBlock(latest) : state.scanned + 1;
     const total = latest - from + 1;
+    const reading = (pct) => note(`Reading Arc for every vault made so far… ${pct}%`);
+    reading(0);
     while (from <= latest) {
       const ranges = [];
       for (let i = 0; i < AT_ONCE && from <= latest; i++) {
@@ -178,19 +180,21 @@ async function scan() {
       state.scanned = ranges[ranges.length - 1][1];
       store.set(KEY, JSON.stringify(state));
       // The percentage keeps counting while Arc is read; the numbers are written only once it reaches 100%.
-      if (total > CHUNK * AT_ONCE) note(`Reading Arc for every vault made so far… ${Math.min(100, Math.round(((total - (latest - from + 1)) / total) * 100))}%`);
+      reading(Math.min(100, Math.round(((total - (latest - from + 1)) / total) * 100)));
     }
     state.checkedAt = Date.now();
     store.set(KEY, JSON.stringify(state));
+    reading(100);
     render();
     // Leave "100%" up while the numbers count, then clear it.
-    if (total > CHUNK * AT_ONCE) setTimeout(() => !busy && note(""), 4000); else note("");
+    setTimeout(() => !busy && note(""), 4000);
   } catch (e) {
     if (e instanceof WrongPassword) {
       password = "";
       store.del("bursar-admin-pw");
       showLogin("Wrong password.");
     } else {
+      render();
       note(`Couldn't read Arc: ${e.message}. It will try again in a minute, carrying on from where it stopped.`, true);
       setTimeout(scan, 60000);
     }
@@ -226,7 +230,8 @@ function countTo(el, target, isMoney) {
   el._raf = requestAnimationFrame(tick);
 }
 
-function render() {
+// hold: draw the boxes but leave their numbers at 0 (used while Arc is still being read after opening the page).
+function render(hold) {
   $("dash").hidden = false;
   const vaults = [...state.vaults].sort((a, b) => b.time - a.time);
   const now = Date.now();
@@ -244,8 +249,10 @@ function render() {
     $("tiles").innerHTML = tiles.map(([l]) => `<div class="card"><p class="label">${l}</p><p class="num" data-v="0">0</p></div>`).join("");
     $("volume").innerHTML = money.map(([l]) => `<div class="card"><p class="label">${l}</p><p class="num"><span data-v="0">0.00</span> <small>USDC</small></p></div>`).join("");
   }
-  $("tiles").querySelectorAll(".num").forEach((el, i) => countTo(el, tiles[i][1], false));
-  $("volume").querySelectorAll("[data-v]").forEach((el, i) => countTo(el, Number(money[i][1] / 10000n) / 100, true));
+  if (!hold) {
+    $("tiles").querySelectorAll(".num").forEach((el, i) => countTo(el, tiles[i][1], false));
+    $("volume").querySelectorAll("[data-v]").forEach((el, i) => countTo(el, Number(money[i][1] / 10000n) / 100, true));
+  }
   showButton();
   const first = monday(now) - 11 * 7 * DAY;
   const weeks = Array.from({ length: 12 }, (_, i) => {
@@ -276,11 +283,11 @@ $("login").addEventListener("submit", (e) => {
   store.set("bursar-admin-pw", password);
   $("login").hidden = true;
   note("");
-  render();
+  render(true);
   scan();
 });
 
-if (password) { render(); scan(); } else showLogin();
+if (password) { render(true); scan(); } else showLogin();
 setInterval(() => password && scan(), 6 * 3600000);
 </script>
 </body>
