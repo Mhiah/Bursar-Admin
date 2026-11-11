@@ -137,6 +137,7 @@ function note(text, bad) {
 }
 
 let busy = false;
+let stopClimb = () => {};
 // Update can be pressed once every 5 minutes; the automatic update every 6 hours carries on regardless.
 const COOLDOWN = 5 * 60000;
 const nextManual = () => Number(store.get("bursar-admin-manual") || 0) + COOLDOWN;
@@ -158,8 +159,18 @@ async function scan() {
     const latest = Number(await rpc("eth_blockNumber", []));
     let from = state.scanned == null ? await firstBlock(latest) : state.scanned + 1;
     const total = latest - from + 1;
-    const reading = (pct) => note(`Reading Arc for every vault made so far… ${pct}%`);
-    reading(0);
+    // The percentage on screen climbs one step at a time towards how far the reading has got, so it is always seen counting.
+    let shown = 0, target = 0;
+    const paint = () => note(`Reading Arc for every vault made so far… ${shown}%`);
+    const reading = (pct) => (target = Math.max(target, pct));
+    const climbed = new Promise((done) => {
+      const t = setInterval(() => {
+        if (shown < target) { shown++; paint(); }
+        if (shown >= 100) { clearInterval(t); done(); }
+      }, 20);
+      stopClimb = () => clearInterval(t);
+    });
+    paint();
     while (from <= latest) {
       const ranges = [];
       for (let i = 0; i < AT_ONCE && from <= latest; i++) {
@@ -185,10 +196,12 @@ async function scan() {
     state.checkedAt = Date.now();
     store.set(KEY, JSON.stringify(state));
     reading(100);
+    await climbed;
     render();
     // Leave "100%" up while the numbers count, then clear it.
     setTimeout(() => !busy && note(""), 4000);
   } catch (e) {
+    stopClimb();
     if (e instanceof WrongPassword) {
       password = "";
       store.del("bursar-admin-pw");
