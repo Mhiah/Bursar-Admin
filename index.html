@@ -27,6 +27,7 @@ form{display:flex;gap:10px;flex-wrap:wrap;max-width:420px}
 input{flex:1;min-width:0;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
 button{font:inherit;font-weight:600;padding:10px 16px;border:0;border-radius:10px;background:var(--blue);color:#fff;cursor:pointer}
 [hidden]{display:none!important}
+.top{display:flex;justify-content:flex-end;margin:-12px 0 14px}button:disabled{opacity:.6;cursor:default}
 @media(max-width:640px){.tiles,.tiles.three{grid-template-columns:repeat(2,1fr)}.tiles.three .card:last-child{grid-column:1/-1}h1{font-size:32px}.bar .d{writing-mode:vertical-rl;transform:rotate(180deg)}}
 </style>
 </head>
@@ -42,6 +43,7 @@ button{font:inherit;font-weight:600;padding:10px 16px;border:0;border-radius:10p
   <p id="note" class="note" hidden></p>
 
   <div id="dash" hidden>
+    <div class="top"><button id="update">Update now</button></div>
     <div class="tiles" id="tiles"></div>
     <div class="tiles three" id="volume"></div>
     <div class="card"><h2>Vaults made each week</h2><div class="chart" id="chart"></div></div>
@@ -135,9 +137,14 @@ function note(text, bad) {
 }
 
 let busy = false;
+const setBusy = (b) => {
+  busy = b;
+  $("update").disabled = b;
+  $("update").textContent = b ? "Updating…" : "Update now";
+};
 async function scan() {
   if (busy) return;
-  busy = true;
+  setBusy(true);
   try {
     const latest = Number(await rpc("eth_blockNumber", []));
     let from = state.scanned == null ? await firstBlock(latest) : state.scanned + 1;
@@ -178,7 +185,7 @@ async function scan() {
       setTimeout(scan, 60000);
     }
   } finally {
-    busy = false;
+    setBusy(false);
   }
 }
 
@@ -222,6 +229,7 @@ function showLogin(msg) {
   $("login").hidden = false;
   note(msg || "", !!msg);
 }
+$("update").addEventListener("click", () => scan());
 $("login").addEventListener("submit", (e) => {
   e.preventDefault();
   password = $("pw").value;
