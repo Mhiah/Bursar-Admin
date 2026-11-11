@@ -137,10 +137,18 @@ function note(text, bad) {
 }
 
 let busy = false;
+// Update now can be pressed once every 5 minutes; the automatic update every 6 hours carries on regardless.
+const COOLDOWN = 5 * 60000;
+const nextManual = () => Number(store.get("bursar-admin-manual") || 0) + COOLDOWN;
+function showButton() {
+  const wait = nextManual() - Date.now();
+  $("update").disabled = busy || wait > 0;
+  $("update").textContent = busy ? "Updating…" : wait > 0 ? `Update again in ${Math.ceil(wait / 60000)} min` : "Update now";
+}
+setInterval(showButton, 5000);
 const setBusy = (b) => {
   busy = b;
-  $("update").disabled = b;
-  $("update").textContent = b ? "Updating…" : "Update now";
+  showButton();
 };
 async function scan() {
   if (busy) return;
@@ -229,7 +237,11 @@ function showLogin(msg) {
   $("login").hidden = false;
   note(msg || "", !!msg);
 }
-$("update").addEventListener("click", () => scan());
+$("update").addEventListener("click", () => {
+  if (busy || Date.now() < nextManual()) return;
+  store.set("bursar-admin-manual", String(Date.now()));
+  scan();
+});
 $("login").addEventListener("submit", (e) => {
   e.preventDefault();
   password = $("pw").value;
