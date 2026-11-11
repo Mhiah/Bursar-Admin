@@ -13,7 +13,7 @@
 main{max-width:1000px;margin:0 auto;padding:32px 16px 64px}
 h1{font-size:40px;font-weight:800;margin:0}h2{font-size:20px;font-weight:800;margin:0 0 16px}
 .sub{margin:8px 0 28px}.note{background:var(--soft);border-radius:10px;padding:12px 14px;margin-bottom:24px}.note.bad{color:var(--bad)}
-.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}.tiles.three{grid-template-columns:repeat(3,1fr)}.num small{font-size:14px;font-weight:600}
 .card{border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:24px}.tiles .card{margin:0}
 .label{font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0}.num{font-size:34px;font-weight:800;margin:6px 0 0}
 .chart{display:flex;align-items:flex-end;gap:6px;height:170px}
@@ -27,7 +27,7 @@ form{display:flex;gap:10px;flex-wrap:wrap;max-width:420px}
 input{flex:1;min-width:0;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px}
 button{font:inherit;font-weight:600;padding:10px 16px;border:0;border-radius:10px;background:var(--blue);color:#fff;cursor:pointer}
 [hidden]{display:none!important}
-@media(max-width:640px){.tiles{grid-template-columns:repeat(2,1fr)}h1{font-size:32px}.bar .d{writing-mode:vertical-rl;transform:rotate(180deg)}}
+@media(max-width:640px){.tiles,.tiles.three{grid-template-columns:repeat(2,1fr)}.tiles.three .card:last-child{grid-column:1/-1}h1{font-size:32px}.bar .d{writing-mode:vertical-rl;transform:rotate(180deg)}}
 </style>
 </head>
 <body>
@@ -43,6 +43,7 @@ button{font:inherit;font-weight:600;padding:10px 16px;border:0;border-radius:10p
 
   <div id="dash" hidden>
     <div class="tiles" id="tiles"></div>
+    <div class="tiles three" id="volume"></div>
     <div class="card"><h2>Vaults made each week</h2><div class="chart" id="chart"></div></div>
     <div class="card"><h2>Every vault</h2><div class="wrap"><table>
       <thead><tr><th>Made</th><th>Owner</th><th>Vault</th></tr></thead><tbody id="rows"></tbody>
@@ -58,9 +59,14 @@ const FACTORY_LIVE = Date.UTC(2026, 9, 14);
 const EXPLORER = "https://explorer.arc.io";
 // keccak256("VaultCreated(address,address,address)")
 const VAULT_CREATED = "0x897c133dfbfe1f6239e98b4ffd7e4f6c86a62350a131a7a37790419f58af02f9";
+// USDC on Arc (its ERC-20 side, 6 decimals). Money into and out of every vault is counted from its Transfer events.
+const USDC = "0x3600000000000000000000000000000000000000";
+// keccak256("Transfer(address,address,uint256)")
+const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 const CHUNK = 10000;
 const AT_ONCE = 2;
-const KEY = "bursar-admin-" + FACTORY;
+// v2: also counts money in and out, so older saved scans start again from the beginning.
+const KEY = "bursar-admin-v2-" + FACTORY;
 const DAY = 86400000;
 
 const $ = (id) => document.getElementById(id);
@@ -70,7 +76,8 @@ const store = {
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
 let password = store.get("bursar-admin-pw") || "";
-let state = (() => { try { return JSON.parse(store.get(KEY)) || { scanned: null, vaults: [] }; } catch { return { scanned: null, vaults: [] }; } })();
+const fresh = () => ({ scanned: null, vaults: [], moneyIn: "0", moneyOut: "0" });
+let state = (() => { try { return JSON.parse(store.get(KEY)) || fresh(); } catch { return fresh(); } })();
 
 class WrongPassword extends Error {}
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -100,6 +107,27 @@ async function firstBlock(latest) {
   return Math.max(0, lo - 1);
 }
 
+// USDC that moved into and out of the vaults between blocks a and b. Moves between two vaults count as neither.
+async function volume(a, b) {
+  const out = { in: 0n, out: 0n };
+  if (!state.vaults.length) return out;
+  const mine = new Set(state.vaults.map((v) => v.vault.toLowerCase()));
+  const topic = (addr) => "0x" + addr.slice(2).toLowerCase().padStart(64, "0");
+  const from = (t) => "0x" + t.slice(26).toLowerCase();
+  const vaults = [...mine];
+  for (let i = 0; i < vaults.length; i += 100) {
+    const group = vaults.slice(i, i + 100).map(topic);
+    const range = { address: USDC, fromBlock: hex(a), toBlock: hex(b) };
+    const [ins, outs] = await Promise.all([
+      rpc("eth_getLogs", [{ ...range, topics: [TRANSFER, null, group] }]),
+      rpc("eth_getLogs", [{ ...range, topics: [TRANSFER, group] }]),
+    ]);
+    for (const l of ins) if (!mine.has(from(l.topics[1]))) out.in += BigInt(l.data);
+    for (const l of outs) if (!mine.has(from(l.topics[2]))) out.out += BigInt(l.data);
+  }
+  return out;
+}
+
 function note(text, bad) {
   $("note").textContent = text;
   $("note").className = "note" + (bad ? " bad" : "");
@@ -127,6 +155,10 @@ async function scan() {
           if (state.vaults.some((v) => v.vault === vault)) continue;
           state.vaults.push({ vault, owner: "0x" + l.topics[1].slice(26), block: Number(l.blockNumber), time: await blockTime(Number(l.blockNumber)) });
         }
+      // Vaults made in these blocks are known now, so their money in these same blocks is counted too.
+      const moved = await Promise.all(ranges.map(([a, b]) => volume(a, b)));
+      state.moneyIn = moved.reduce((s, m) => s + m.in, BigInt(state.moneyIn)).toString();
+      state.moneyOut = moved.reduce((s, m) => s + m.out, BigInt(state.moneyOut)).toString();
       state.scanned = ranges[ranges.length - 1][1];
       store.set(KEY, JSON.stringify(state));
       if (total > CHUNK * AT_ONCE) note(`Reading Arc for every vault made so far… ${Math.min(100, Math.round(((total - (latest - from + 1)) / total) * 100))}%`);
@@ -150,6 +182,8 @@ async function scan() {
   }
 }
 
+// 6-decimal units to "1,234.56".
+const usdc = (n) => (Number(n / 10000n) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const fmt = (t, o) => new Date(t).toLocaleDateString("en-GB", o);
 const monday = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); };
@@ -167,6 +201,9 @@ function render() {
     ["Last 30 days", vaults.filter((v) => v.time >= now - 30 * DAY).length],
   ];
   $("tiles").innerHTML = tiles.map(([l, n]) => `<div class="card"><p class="label">${l}</p><p class="num">${n}</p></div>`).join("");
+  const moneyIn = BigInt(state.moneyIn || "0"), moneyOut = BigInt(state.moneyOut || "0");
+  $("volume").innerHTML = [["Money in", moneyIn], ["Money out", moneyOut], ["Total volume", moneyIn + moneyOut]]
+    .map(([l, n]) => `<div class="card"><p class="label">${l}</p><p class="num">${usdc(n)} <small>USDC</small></p></div>`).join("");
   const first = monday(now) - 11 * 7 * DAY;
   const weeks = Array.from({ length: 12 }, (_, i) => {
     const start = first + i * 7 * DAY;
