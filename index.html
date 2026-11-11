@@ -177,13 +177,14 @@ async function scan() {
       state.moneyOut = moved.reduce((s, m) => s + m.out, BigInt(state.moneyOut)).toString();
       state.scanned = ranges[ranges.length - 1][1];
       store.set(KEY, JSON.stringify(state));
+      // The percentage keeps counting while Arc is read; the numbers are written only once it reaches 100%.
       if (total > CHUNK * AT_ONCE) note(`Reading Arc for every vault made so far… ${Math.min(100, Math.round(((total - (latest - from + 1)) / total) * 100))}%`);
-      render();
     }
     state.checkedAt = Date.now();
     store.set(KEY, JSON.stringify(state));
-    note("");
     render();
+    // Leave "100%" up while the numbers count, then clear it.
+    if (total > CHUNK * AT_ONCE) setTimeout(() => !busy && note(""), 4000); else note("");
   } catch (e) {
     if (e instanceof WrongPassword) {
       password = "";
@@ -275,6 +276,7 @@ $("login").addEventListener("submit", (e) => {
   store.set("bursar-admin-pw", password);
   $("login").hidden = true;
   note("");
+  render();
   scan();
 });
 
