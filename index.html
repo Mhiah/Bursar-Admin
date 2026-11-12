@@ -158,7 +158,9 @@ async function scan() {
   try {
     const latest = Number(await rpc("eth_blockNumber", []));
     let from = state.scanned == null ? await firstBlock(latest) : state.scanned + 1;
-    const total = latest - from + 1;
+    // A first reading that was interrupted carries on from where it stopped, and so does its percentage.
+    const base = state.checkedAt ? from : (state.start ??= from);
+    const total = latest - base + 1;
     // The percentage on screen climbs one step at a time towards how far the reading has got, so it is always seen counting.
     let shown = 0, target = 0;
     const paint = () => note(`Reading Arc for every vault made so far… ${shown}%`);
@@ -171,6 +173,7 @@ async function scan() {
       stopClimb = () => clearInterval(t);
     });
     paint();
+    reading(Math.max(0, Math.round(((from - base) / total) * 100)));
     while (from <= latest) {
       const ranges = [];
       for (let i = 0; i < AT_ONCE && from <= latest; i++) {
@@ -191,7 +194,7 @@ async function scan() {
       state.scanned = ranges[ranges.length - 1][1];
       store.set(KEY, JSON.stringify(state));
       // The percentage keeps counting while Arc is read; the numbers are written only once it reaches 100%.
-      reading(Math.min(100, Math.round(((total - (latest - from + 1)) / total) * 100)));
+      reading(Math.max(0, Math.min(100, Math.round(((total - (latest - from + 1)) / total) * 100))));
     }
     state.checkedAt = Date.now();
     store.set(KEY, JSON.stringify(state));
@@ -207,7 +210,8 @@ async function scan() {
       store.del("bursar-admin-pw");
       showLogin("Wrong password.");
     } else {
-      render();
+      // Part-read numbers are never shown: only numbers from a reading that reached 100% (now or on an earlier visit).
+      if (state.checkedAt) render();
       note(`Couldn't read Arc: ${e.message}. It will try again in a minute, carrying on from where it stopped.`, true);
       setTimeout(scan, 60000);
     }
