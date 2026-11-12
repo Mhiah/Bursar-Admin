@@ -77,6 +77,8 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   del(k) { try { localStorage.removeItem(k); } catch {} },
 };
+// The password is switched off for now. To bring it back, set this to true here and PASSWORD_ON to true in api/rpc.js.
+const PASSWORD_ON = false;
 let password = store.get("bursar-admin-pw") || "";
 const fresh = () => ({ scanned: null, vaults: [], moneyIn: "0", moneyOut: "0" });
 let state = (() => { try { return JSON.parse(store.get(KEY)) || fresh(); } catch { return fresh(); } })();
@@ -304,8 +306,8 @@ $("login").addEventListener("submit", (e) => {
   scan();
 });
 
-if (password) { render(true); scan(); } else showLogin();
-setInterval(() => password && scan(), 6 * 3600000);
+if (password || !PASSWORD_ON) { render(true); scan(); } else showLogin();
+setInterval(() => (password || !PASSWORD_ON) && scan(), 6 * 3600000);
 </script>
 </body>
 </html>
