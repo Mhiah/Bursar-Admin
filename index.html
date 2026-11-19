@@ -85,17 +85,24 @@ let state = (() => { try { return JSON.parse(store.get(KEY)) || fresh(); } catch
 
 class WrongPassword extends Error {}
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-// Arc's public server limits how fast it can be asked: when it says slow down, wait and try again.
+// Arc can be busy, slow or briefly out of reach (a phone changing network, a dropped connection):
+// wait a little longer each time and try again before giving up.
 async function rpc(method, params) {
   for (let attempt = 0; ; attempt++) {
-    const r = await fetch("/api/rpc", { method: "POST", headers: { "content-type": "application/json", "x-admin-password": password }, body: JSON.stringify({ method, params }) });
-    if (r.status === 401) throw new WrongPassword();
-    const out = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    let r, out;
+    try {
+      r = await fetch("/api/rpc", { method: "POST", headers: { "content-type": "application/json", "x-admin-password": password }, body: JSON.stringify({ method, params }), signal: AbortSignal.timeout?.(60000) });
+      if (r.status === 401) throw new WrongPassword();
+      out = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    } catch (e) {
+      if (e instanceof WrongPassword) throw e;
+      out = { error: e.name === "TimeoutError" ? "Arc took too long to answer" : e.message };
+    }
     const msg = out.error ? (typeof out.error === "string" ? out.error : out.error.message) : null;
     if (!msg) return out.result;
-    const limited = r.status === 429 || /rate|limit|too many/i.test(msg);
-    if (!limited || attempt >= 8) throw new Error(msg);
-    await wait(Math.min(30000, 1000 * 2 ** attempt));
+    const again = !r || r.status === 429 || r.status >= 500 || /rate|limit|too many|busy/i.test(msg);
+    if (!again || attempt >= 6) throw new Error(msg);
+    await wait(Math.min(20000, 1000 * 2 ** attempt));
   }
 }
 const hex = (n) => "0x" + n.toString(16);

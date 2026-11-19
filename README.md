@@ -19,4 +19,5 @@ It updates each time I open it, and every 6 hours while it stays open.
 2. In Settings → Environment Variables add `ADMIN_PASSWORD` (any password you choose), then redeploy.
 3. Open the site and enter the password.
 
-Optional: `ARC_RPC_URL` (default `https://rpc.mainnet.arc.io`).
+Arc is read through several public Arc servers (Circle, dRPC, Blockdaemon, QuickNode). If one is down or busy the next is used.
+Optional: `ARC_RPC_URL`, a private Arc server (for example from Alchemy) that is tried first.
